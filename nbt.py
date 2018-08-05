@@ -87,6 +87,12 @@ class DataNBTTag:
     def print(self, indent=""):
         print(indent + self.tag_type + ": '" + self.tag_name + "' = " + str(self.tag_value))
 
+    def get(self):
+        return self.tag_value
+
+    def name(self):
+        return self.tag_name
+
 class MultiNBTTag:
     def __init__(self, tag_type, tag_name):
         self.tag_type = tag_type
@@ -95,6 +101,9 @@ class MultiNBTTag:
     
     def addChild(self, tag):
         self.children.append(tag)
+    
+    def name(self):
+        return self.tag_name
 
     def print(self, indent=""):
         print(indent + self.tag_type + ": '" + self.tag_name + "' size " + str(len(self.children)))
@@ -112,6 +121,18 @@ class CompundNBTTag(MultiNBTTag):
 
     def get(self, name):
         return self.children[name]
+
+    def name(self):
+        return self.tag_name
+
+    def has(self, name):
+        return name in self.children
+
+    def toDict(self):
+        nd = {}
+        for p in self.children:
+            nd[p] = self.children[p].get()
+        return nd
 
     def print(self, indent=""):
         print(indent + self.tag_type + ": '" + self.tag_name + "' size " + str(len(self.children)))

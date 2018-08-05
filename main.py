@@ -1,12 +1,6 @@
-import nbt, gzip, zlib, stream, sys
+import nbt, gzip, zlib, stream, sys, world
 
-WORLD_FOLDER = "world/"
-
-# with gzip.open(WORLD_FOLDER + "playerdata/47ed23f7-4b2c-4844-82ff-a53220533359.dat", mode="rb") as plr:
-#     strm = Stream(plr.read())
-
-#     data = nbt.parse_nbt(strm)
-#     data.print()
+WORLD_FOLDER = "newWorld/"
 
 # with gzip.open(WORLD_FOLDER + "level.dat", mode="rb") as level:
 #     strm = stream.Stream(level.read())
@@ -35,7 +29,9 @@ with open(WORLD_FOLDER + "region/r.0.0.mca", mode="rb") as region:
             wrk.write(decompressed)
         data = nbt.parse_nbt(stream.Stream(decompressed))
         # data.print()
-
-# with open("workrgn.nbt", mode="rb") as workfile:
-#     data = nbt.parse_nbt(workfile)
-#     data.print()
+        chunk = world.Chunk(
+            data.get("Level").get("xPos").get(),
+            data.get("Level").get("zPos").get(),
+            world.Chunk.unpack(data)
+        )
+        sys.exit(0)
