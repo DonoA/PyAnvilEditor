@@ -7,16 +7,15 @@ class Block:
 
 class Chunk:
 
-    def __init__(self, blocks):
-        self.blocks = {}
-        for section in blocks:
-            self.blocks[section] = [[[0 for z in range(16)] for y in range(16)] for x in range(16)]
-            for y in range(16):
-                for z in range(16):
-                    for x in range(16):
-                        self.blocks[section][x][y][z] = blocks[section][x + z * 16 + y * 16 ** 2]
+    def __init__(self, xpos, zpos, blocks):
+        self.xpos = xpos
+        self.zpos = zpos
+
+        self.blocks = blocks
         
-    
+    def get(self, x, y, z):
+        return self.blocks[int(y/16)][(x % 16) + (z % 16) * 16 + (y % 16) * 16 ** 2]
+
     # Blockstates are packed based on the number of values in the pallet. 
     # This selects the pack size, then splits out the ids
     def unpack(raw_nbt):
@@ -28,11 +27,12 @@ class Chunk:
                 Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
             ]
             print(pack_size)
+            section.print()
             states = [
                 section.get("Palette").children[i] for i in states
             ]
             blocks[section.get("Y").get()] = [
-                Block(state.get("Name").get(), state.get("Properties").toDict() if state.has("Properties") else {}) for state in states
+                Block(state.get("Name").get(), state.get("Properties").to_dict() if state.has("Properties") else {}) for state in states
             ]
 
         return blocks
@@ -56,7 +56,7 @@ class Chunk:
         # move them back to where they should be
         comp = comp >> (offset % 64)
 
-        print(format(search_space, '#0' + str(spc) + 'b'))
-        print(format(mask, '#0' + str(spc) + 'b'))
+        # print(format(search_space, '#0' + str(spc) + 'b'))
+        # print(format(mask, '#0' + str(spc) + 'b'))
 
         return comp

@@ -25,8 +25,6 @@ with open(WORLD_FOLDER + "region/r.0.0.mca", mode="rb") as region:
         datalen = int.from_bytes(region.read(4), byteorder='big', signed=False)
         compr = region.read(1)
         decompressed = zlib.decompress(region.read(datalen))
-        with open("workrng.nbt", mode="wb") as wrk:
-            wrk.write(decompressed)
         data = nbt.parse_nbt(stream.Stream(decompressed))
         # data.print()
         chunk = world.Chunk(
@@ -34,4 +32,5 @@ with open(WORLD_FOLDER + "region/r.0.0.mca", mode="rb") as region:
             data.get("Level").get("zPos").get(),
             world.Chunk.unpack(data)
         )
+        print(chunk.xpos, chunk.zpos, chunk.get(8, 12, 4).name)
         sys.exit(0)
