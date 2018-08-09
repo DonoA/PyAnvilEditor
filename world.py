@@ -20,14 +20,18 @@ class Chunk:
     # This selects the pack size, then splits out the ids
     def unpack(raw_nbt):
         blocks = {}
-        for section in [raw_nbt.get("Level").get("Sections").children[3]]:
+        for section in raw_nbt.get("Level").get("Sections").children:
             flatstates = [c.get() for c in section.get("BlockStates").children]
             pack_size = int((len(flatstates) * 64) / (16**3))
             states = [
                 Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
             ]
             print(pack_size)
-            section.print()
+            print(states)
+            section.get("Palette").print()
+            for i in range(max(states)):
+                if i not in states:
+                    print(i, "not in states")
             states = [
                 section.get("Palette").children[i] for i in states
             ]
@@ -54,9 +58,15 @@ class Chunk:
         # select the bits we need
         comp = search_space & mask
         # move them back to where they should be
-        comp = comp >> (offset % 64)
+        comp = comp >> ((offset % 64) + (1 if spc == 128 else 0))
 
+        # print(comp)
+        # print(format(long_list[int(offset/64)], '#064b'))
+        # print(format(long_list[int(offset/64) + 1], '#064b'))
         # print(format(search_space, '#0' + str(spc) + 'b'))
         # print(format(mask, '#0' + str(spc) + 'b'))
+        # print(bin(comp))
+
+        # sys.exit(0)
 
         return comp
