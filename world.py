@@ -1,4 +1,4 @@
-import sys
+import sys, math, nbt, gzip, zlib, stream
 
 class Block:
     def __init__(self, name, props):
@@ -13,7 +13,17 @@ class Chunk:
 
         self.blocks = blocks
         
-    def get(self, x, y, z):
+    def get(self, block_pos):
+        x = block_pos[0]
+        y = block_pos[1]
+        z = block_pos[2] - 1
+        print(x%16, y%16, z%16)
+        # print([s.name for s in self.blocks[int(y/16)]])
+        for x1 in range(16):
+            for y1 in range(16):
+                for z1 in range(16):
+                    if "water" in self.blocks[int(y/16)][(x1 % 16) + (z1 % 16) * 16 + (y1 % 16) * 16 ** 2].name:
+                        print(x1, y1, z1, self.blocks[int(y/16)][(x1 % 16) + (z1 % 16) * 16 + (y1 % 16) * 16 ** 2].name)
         return self.blocks[int(y/16)][(x % 16) + (z % 16) * 16 + (y % 16) * 16 ** 2]
 
     # Blockstates are packed based on the number of values in the pallet. 
@@ -27,11 +37,6 @@ class Chunk:
                 Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
             ]
             print(pack_size)
-            print(states)
-            section.get("Palette").print()
-            for i in range(max(states)):
-                if i not in states:
-                    print(i, "not in states")
             states = [
                 section.get("Palette").children[i] for i in states
             ]
@@ -58,7 +63,7 @@ class Chunk:
         # select the bits we need
         comp = search_space & mask
         # move them back to where they should be
-        comp = comp >> ((offset % 64) + (1 if spc == 128 else 0))
+        comp = comp >> ((offset % 64) + (1 if spc == 128 and width % 2 != 0 else 0))
 
         # print(comp)
         # print(format(long_list[int(offset/64)], '#064b'))
@@ -70,3 +75,73 @@ class Chunk:
         # sys.exit(0)
 
         return comp
+
+class World:
+    def __init__(self, file_name):
+        self.file_name = file_name
+        self.chunks = {}
+    
+    def get_block(self, block_pos):
+        chunk_pos = self._get_chunk(block_pos)
+        if chunk_pos not in self.chunks:
+            self._load_chunk(chunk_pos)
+        
+        chunk = self.chunks[chunk_pos]
+        return chunk.get(block_pos)
+        
+    def _load_chunk(self, chunk_pos):
+        with open(self.file_name + "/region/" + self._get_region_file(chunk_pos), mode="rb") as region:
+            locations = list(filter(
+                lambda x: x[0] > 0,
+                [
+                    [
+                        int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
+                        int.from_bytes(region.read(1), byteorder='big', signed=False) * 4096
+                    ] for i in range(1024)
+                ]
+            ))
+
+            timestamps = region.read(4096)
+
+            for l in locations:
+                c_loc = self._get_binary_location_at(region, l[0])
+                if c_loc == chunk_pos:
+                    # chunk = self._load_binary_chunk_at(region, locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)][0])
+                    print("Found!")
+                    chunk = self._load_binary_chunk_at(region, l[0])
+                    self.chunks[chunk_pos] = chunk
+                    break
+
+    def _get_binary_location_at(self, region_file, offset):
+        region_file.seek(offset)
+        datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
+        compr = region_file.read(1)
+        decompressed = zlib.decompress(region_file.read(datalen))
+        data = nbt.parse_nbt(stream.Stream(decompressed))
+
+        return (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
+
+    def _load_binary_chunk_at(self, region_file, offset):
+        region_file.seek(offset)
+        datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
+        compr = region_file.read(1)
+        decompressed = zlib.decompress(region_file.read(datalen))
+        data = nbt.parse_nbt(stream.Stream(decompressed))
+        # data.print()
+        chunk_pos = (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
+        chunk = Chunk(
+            chunk_pos[0],
+            chunk_pos[1],
+            Chunk.unpack(data)
+        )
+        return chunk
+
+    def _get_region_file(self, chunk_pos):
+        return "r." + '.'.join([str(x) for x in self._get_region(chunk_pos)]) + '.mca'
+
+
+    def _get_chunk(self, block_pos):
+        return (math.floor(block_pos[0] / 16), math.floor(block_pos[2] / 16))
+
+    def _get_region(self, chunk_pos):
+        return (math.floor(chunk_pos[0] / 32), math.floor(chunk_pos[1] / 32))
