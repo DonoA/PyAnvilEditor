@@ -19,9 +19,10 @@ class Block:
         self.state = state
 
 class ChunkSection:
-    def __init__(self, blocks, palette):
+    def __init__(self, blocks, palette, raw_section):
         self.blocks = blocks
         self.palette = palette
+        self.raw_section = raw_section
 
     def get_block(self, block_pos):
         x = block_pos[0]
@@ -30,11 +31,55 @@ class ChunkSection:
 
         return self.blocks[x + z * 16 + y * 16 ** 2]
 
+    def serialize(self):
+        serial_section = self.raw_section
+
+        serial_section.add_child(self._serialize_palette())
+        serial_section.add_child(self._serialize_blockstates())
+
+        # serial_section.get("Palette").print()
+        # sys.exit(0)
+        return serial_section
+
+    def _serialize_palette(self):
+        serial_palette = nbt.ListTag("Palette", nbt.CompoundTag.clazz_id)
+        for i in range(len(self.palette)):
+            state = self.palette[i]
+            state.id = i
+            palette_item = nbt.CompoundTag("None", children=[
+                nbt.StringTag("Name", state.name)
+            ])
+            if len(state.props) != 0:
+                serial_props = nbt.CompoundTag("Properties")
+                for name, val in state.props.items():
+                    serial_props.add_child(nbt.StringTag(name, str(val)))
+                palette_item.add_child(serial_props)
+            serial_palette.add_child(palette_item)
+        
+        return serial_palette
+
+    def _serialize_blockstates(self):
+        serial_states = nbt.LongArrayTag("BlockStates")
+        width = math.ceil(math.log(len(self.palette), 2))
+        data = 0
+        for block in self.blocks:
+            data = (data << width) + block.state.id
+
+        mask = (2 ** 64) - 1
+        for i in range(int((len(self.blocks) * width)/64)):
+            lng = data & mask
+            serial_states.add_child(nbt.LongTag("", lng))
+            data = data >> 64
+
+        return serial_states
+
 class Chunk:
-    def __init__(self, xpos, zpos, sections):
+
+    def __init__(self, xpos, zpos, sections, raw_nbt):
         self.xpos = xpos
         self.zpos = zpos
         self.sections = sections
+        self.raw_nbt = raw_nbt
         
     def get_block(self, block_pos):
         return self.get_section(block_pos[1]).get_block([n % 16 for n in block_pos])
@@ -63,43 +108,66 @@ class Chunk:
         for section in raw_nbt.get("Level").get("Sections").children:
             flatstates = [c.get() for c in section.get("BlockStates").children]
             pack_size = int((len(flatstates) * 64) / (16**3))
+            # print(pack_size)
             states = [
                 Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
             ]
             palette = [ 
                 BlockState(
-                    section.get("Palette").children[i].get("Name").get(),
-                    section.get("Palette").children[i].get("Properties").to_dict() if section.get("Palette").children[i].has("Properties") else {}
-                ) for i in range(len(section.get("Palette").children))
+                    state.get("Name").get(),
+                    state.get("Properties").to_dict() if state.has("Properties") else {}
+                ) for state in section.get("Palette").children
             ]
             blocks = [
                 Block(palette[state]) for state in states
             ]
-            sections[section.get("Y").get()] = ChunkSection(blocks, palette)
+            sections[section.get("Y").get()] = ChunkSection(blocks, palette, section)
+            # section.get("Palette").print()
 
         return sections
 
     def pack(self):
-        pass
+        # new_sections = nbt.ListTag("Sections", nbt.CompoundTag.clazz_id, children=[
+        #     self.sections[sec].serialize() for sec in self.sections
+        # ])
+        # self.raw_nbt.get("Level").add_child(new_sections)
+
+        return self.raw_nbt
 
     def _read_width_from_loc(long_list, width, possition):
         offset = possition * width
-        # refrence the space we want to select from to make things a little easier
-        search_space = long_list[int(offset/64)]
-        spc = 64
-        if int(offset/64) != int((offset + width)/64) and int((offset + width)/64) < len(long_list):
-            # love ya python!
-            search_space = (search_space << 64) + long_list[int((offset + width)/64)]
-            spc = 128
+        # if this is split across two nums
+        if (offset % 64) + width > 64:
+            # Find the lengths on each side of the split
+            side1len = 64 - ((offset) % 64)
+            side2len = ((offset + width) % 64)
+            # Select the sections we want from each
+            side1 = Chunk._read_bits(long_list[int(offset/64)], side1len, offset % 64)
+            side2 = Chunk._read_bits(long_list[int((offset + width)/64)], side2len, 0)
+            # Join them
+            comp = (side1 < side2len) + side2
+            return comp
+        else:
+            comp = Chunk._read_bits(long_list[int(offset/64)], width, offset % 64)
+            return comp
 
+    def _read_bits(num, width, start):
         # create a mask of size 'width' of 1 bits
         mask = (2 ** width) - 1
         # shift it out to where we need for the mask
-        mask = mask << (offset % 64)
+        mask = mask << start
         # select the bits we need
-        comp = search_space & mask
+        comp = num & mask
         # move them back to where they should be
-        comp = comp >> ((offset % 64) + ((width - 4) if spc == 128 else 0))
+        # if width != 5:
+        #     print("width: ", width)
+        #     print("search:", format(num, '#0' + str(64 + 3) + 'b'))
+        #     print("mask:  ", format(mask, '#0' + str(64 + 3) + 'b'))
+        #     print("before:", format(comp, '#0' + str(64 + 3) + 'b'))
+        comp = comp >> start
+        # if width != 5:
+        #     print("after: ", format(comp, '#0' + str(width + 3) + 'b'))
+        #     print("value: ", comp)
 
         return comp
 
@@ -116,8 +184,23 @@ class World:
         self.close()
 
     def close(self):
-        for c in self.chunks:
-            pass
+        for chunk_pos, chunk in self.chunks.items():
+            with open(self.save_location + "/" + self.file_name + "/region/" + self._get_region_file(chunk_pos), mode="r+b") as region:
+                locations = [[
+                            int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
+                            int.from_bytes(region.read(1), byteorder='big', signed=False) * 4096
+                        ] for i in range(1024) ]
+
+                timestamps = region.read(4096)
+
+                strm = stream.OutputStream()
+                data = chunk.pack().serialize(strm)
+                data = zlib.compress(strm.get_data())
+
+                sys.exit(0)
+                # write in the location and length we will be using
+
+                # shift file as needed handle new data
 
     def get_block(self, block_pos):
         chunk_pos = self._get_chunk(block_pos)
@@ -142,27 +225,20 @@ class World:
             chunk = self._load_binary_chunk_at(region, locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)][0])
             self.chunks[chunk_pos] = chunk
 
-    def _get_binary_location_at(self, region_file, offset):
-        region_file.seek(offset)
-        datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
-        compr = region_file.read(1)
-        decompressed = zlib.decompress(region_file.read(datalen))
-        data = nbt.parse_nbt(stream.Stream(decompressed))
-
-        return (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
-
     def _load_binary_chunk_at(self, region_file, offset):
         region_file.seek(offset)
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
         compr = region_file.read(1)
         decompressed = zlib.decompress(region_file.read(datalen))
-        data = nbt.parse_nbt(stream.Stream(decompressed))
-        # data.print()
+        data = nbt.parse_nbt(stream.InputStream(decompressed))
+        # data.get("Level").print()
+        # sys.exit(0)
         chunk_pos = (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
         chunk = Chunk(
             chunk_pos[0],
             chunk_pos[1],
-            Chunk.unpack(data)
+            Chunk.unpack(data),
+            data
         )
         return chunk
 

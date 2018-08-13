@@ -217,7 +217,7 @@ def create_compund_nbt_class(tag_id):
             return nd
 
         def print(self, indent=""):
-            print(indent + "Compund: '" + self.tag_name + "' size " + str(len(self.children)))
+            print(indent + "Compound: '" + self.tag_name + "' size " + str(len(self.children)))
             for c in self.children:
                 self.children[c].print(indent + "  ")
 
