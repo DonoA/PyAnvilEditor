@@ -11,12 +11,17 @@ class BlockState:
 class Block:
     def __init__(self, state):
         self.state = state
+        self.dirty = False
 
     def __str__(self):
         return "Block(" + str(self.state) + ")"
 
     def set_state(self, state):
+        self.dirty = True
         self.state = state
+
+    def get_state(self):
+        return self.state
 
 class ChunkSection:
     def __init__(self, blocks, palette, raw_section):
@@ -33,12 +38,11 @@ class ChunkSection:
 
     def serialize(self):
         serial_section = self.raw_section
+        
 
         serial_section.add_child(self._serialize_palette())
         serial_section.add_child(self._serialize_blockstates())
 
-        # serial_section.get("Palette").print()
-        # sys.exit(0)
         return serial_section
 
     def _serialize_palette(self):
@@ -107,13 +111,9 @@ class Chunk:
     # This selects the pack size, then splits out the ids
     def unpack(raw_nbt):
         sections = {}
-        # print("decode:", format(raw_nbt.get("Level").get("Sections").children[0].get("BlockStates").children[0].get(), '#0' + str(64 + 2) + 'b'))
-        # print(raw_nbt.get("Level").get("Sections").children[0].get("BlockStates").children[0].get())
         for section in raw_nbt.get("Level").get("Sections").children:
             flatstates = [c.get() for c in section.get("BlockStates").children]
             pack_size = int((len(flatstates) * 64) / (16**3))
-            # print(pack_size)
-            # print(len(section.get("BlockStates").children))
             states = [
                 Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
             ]
@@ -127,9 +127,8 @@ class Chunk:
                 Block(palette[state]) for state in states
             ]
             sections[section.get("Y").get()] = ChunkSection(blocks, palette, section)
-            # section.get("Palette").print()
 
-            return sections
+        return sections
 
     def pack(self):
         new_sections = nbt.ListTag("Sections", nbt.CompoundTag.clazz_id, children=[
@@ -141,7 +140,6 @@ class Chunk:
 
     def _read_width_from_loc(long_list, width, possition):
         offset = possition * width
-        first = True
         # if this is split across two nums
         if (offset % 64) + width > 64:
             # Find the lengths on each side of the split
@@ -152,11 +150,6 @@ class Chunk:
             side2 = Chunk._read_bits(long_list[int((offset + width)/64)], side2len, 0)
             # Join them
             comp = (side2 << side1len) + side1
-            if first:
-                first = False
-                # print("bit1:", format(side1, '#0' + str(side1len + 2) + 'b'))
-                # print("bit2:", format(side2, '#0' + str(side2len + 2) + 'b'))
-                # print("bit:", format(comp, '#0' + str(5 + 2) + 'b'))
             return comp
         else:
             comp = Chunk._read_bits(long_list[int(offset/64)], width, offset % 64)
@@ -170,15 +163,7 @@ class Chunk:
         # select the bits we need
         comp = num & mask
         # move them back to where they should be
-        # if width != 5:
-        #     print("width: ", width)
-        #     print("search:", format(num, '#0' + str(64 + 3) + 'b'))
-        #     print("mask:  ", format(mask, '#0' + str(64 + 3) + 'b'))
-        #     print("before:", format(comp, '#0' + str(64 + 3) + 'b'))
         comp = comp >> start
-        # if width != 5:
-        #     print("after: ", format(comp, '#0' + str(width + 3) + 'b'))
-        #     print("value: ", comp)
 
         return comp
 
@@ -206,24 +191,45 @@ class World:
 
                 strm = stream.OutputStream()
                 chunk.pack().serialize(strm)
-                print("try again")
-                data = nbt.parse_nbt(stream.InputStream(strm.get_data()))
-                # data.get("Level").get("Sections").children[0].print()
-                chunk_pos = (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
-                chunk = Chunk(
-                    chunk_pos[0],
-                    chunk_pos[1],
-                    Chunk.unpack(data),
-                    data
-                )
-                print(chunk.get_block((100, 5, 100)))
-                chunk.pack()
-
                 data = zlib.compress(strm.get_data())
-                sys.exit(0)
-                # write in the location and length we will be using
+
+                # Read the rest of the file
+                loc = locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)]
+                region.seek(loc[0])
+                chunk_len = int.from_bytes(region.read(4), byteorder='big', signed=False)
+                region.seek(loc[0] + loc[1])
+                rest_of_file = region.read()
+
+                datalen = len(data)
+                block_data_len = math.ceil(datalen/4096.0)*4096
+                data_len_diff = block_data_len - loc[1]
+                print(data_len_diff)
+                if data_len_diff != 0:
+                    print("diff is not 0, I would stop now")
+                    sys.exit(0)
 
                 # shift file as needed handle new data
+                region.seek(loc[0])
+                region.write(datalen.to_bytes(4, byteorder='big', signed=False))
+                region.write((2).to_bytes(1, byteorder="big", signed=False))
+                region.write(data)
+                
+                # print(datalen, chunk_len, len(strm.get_data()))
+                # write in the location and length we will be using
+                for c_loc in locations:
+                    if c_loc[0] > loc[0]:
+                        c_loc[0] = c_loc[0] + data_len_diff
+                
+                locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)][1] = block_data_len
+                region.seek(0)
+                # print(max([l[1] for l in locations]))
+                # print(locations)
+                for c_loc in locations:
+                    region.write(int(c_loc[0]/4096).to_bytes(3, byteorder="big", signed=False))
+                    region.write(int(c_loc[1]/4096).to_bytes(1, byteorder="big", signed=False))
+
+                # make sure the last chunk is padded to make the whole file a multiple of 4 KB
+
 
     def get_block(self, block_pos):
         chunk_pos = self._get_chunk(block_pos)
@@ -253,9 +259,12 @@ class World:
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
         compr = region_file.read(1)
         decompressed = zlib.decompress(region_file.read(datalen))
+        print(datalen, len(decompressed), len(zlib.compress(decompressed)))
         data = nbt.parse_nbt(stream.InputStream(decompressed))
-        # data.get("Level").print()
-        # sys.exit(0)
+        # data.print()
+        # nstrm = stream.OutputStream()
+        # data.serialize(nstrm)
+        # print(len(nstrm.get_data()), len(zlib.compress(nstrm.get_data())))
         chunk_pos = (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
         chunk = Chunk(
             chunk_pos[0],
@@ -263,6 +272,12 @@ class World:
             Chunk.unpack(data),
             data
         )
+        # ndt = chunk.pack()
+        # ndt.print()
+        # nstrm = stream.OutputStream()
+        # ndt.serialize(nstrm)
+        # print(len(nstrm.get_data()), len(zlib.compress(nstrm.get_data())))
+        # sys.exit(0)
         return chunk
 
     def _get_region_file(self, chunk_pos):
