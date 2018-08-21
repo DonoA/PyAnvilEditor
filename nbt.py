@@ -33,8 +33,8 @@ def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
             self.tag_name = tag_name
             self.tag_value = tag_value
 
-        def print(self, indent=""):
-            print(indent + type(self).clazz_name + ": '" + self.tag_name + "' = " + str(self.tag_value))
+        def print(self, indent=''):
+            print(indent + type(self).clazz_name + ': '' + self.tag_name + '' = ' + str(self.tag_value))
 
         def get(self):
             return self.tag_value
@@ -61,15 +61,15 @@ def create_string_nbt_class(tag_id):
         @classmethod
         def parse(cls, stream, name):
             payload_length = int.from_bytes(stream.read(2), byteorder='big', signed=False)
-            payload = stream.read(payload_length).decode("utf-8")
+            payload = stream.read(payload_length).decode('utf-8')
             return cls(name, payload)
 
         def __init__(self, tag_name, tag_value):
             self.tag_name = tag_name
             self.tag_value = tag_value
 
-        def print(self, indent=""):
-            print(indent + "String: '" + self.tag_name + "' = " + str(self.tag_value))
+        def print(self, indent=''):
+            print(indent + 'String: '' + self.tag_name + '' = ' + str(self.tag_value))
 
         def get(self):
             return self.tag_value
@@ -102,7 +102,7 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
             payload_length = int.from_bytes(stream.read(4), byteorder='big', signed=True)
             tag = cls(name)
             for i in range(payload_length):
-                tag.add_child(cls.clazz_sub_type.parse(stream, "None"))
+                tag.add_child(cls.clazz_sub_type.parse(stream, 'None'))
             return tag
 
         def __init__(self, tag_name, children=[]):
@@ -115,10 +115,10 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
         def name(self):
             return self.tag_name
 
-        def print(self, indent=""):
-            print(indent + type(self).clazz_name + ": '" + self.tag_name + "' size " + str(len(self.children)))
+        def print(self, indent=''):
+            print(indent + type(self).clazz_name + ': '' + self.tag_name + '' size ' + str(len(self.children)))
             for c in self.children:
-                c.print(indent + "  ")
+                c.print(indent + '  ')
 
         def serialize(self, stream, include_name=True):
             if include_name:
@@ -147,7 +147,7 @@ def create_list_nbt_class(tag_id):
             payload_length = int.from_bytes(stream.read(4), byteorder='big', signed=True)
             tag = cls(name, sub_type)
             for i in range(payload_length):
-                tag.add_child(_parsers[sub_type].parse(stream, "None"))
+                tag.add_child(_parsers[sub_type].parse(stream, 'None'))
             return tag
 
         def __init__(self, tag_name, sub_type_id, children=[]):
@@ -161,10 +161,10 @@ def create_list_nbt_class(tag_id):
         def name(self):
             return self.tag_name
 
-        def print(self, indent=""):
-            print(indent + "List: '" + self.tag_name + "' size " + str(len(self.children)))
+        def print(self, indent=''):
+            print(indent + 'List: '' + self.tag_name + '' size ' + str(len(self.children)))
             for c in self.children:
-                c.print(indent + "  ")
+                c.print(indent + '  ')
         
         def serialize(self, stream, include_name=True):
             if include_name:
@@ -216,10 +216,10 @@ def create_compund_nbt_class(tag_id):
                 nd[p] = self.children[p].get()
             return nd
 
-        def print(self, indent=""):
-            print(indent + "Compound: '" + self.tag_name + "' size " + str(len(self.children)))
+        def print(self, indent=''):
+            print(indent + 'Compound: '' + self.tag_name + '' size ' + str(len(self.children)))
             for c in self.children:
-                self.children[c].print(indent + "  ")
+                self.children[c].print(indent + '  ')
 
         def serialize(self, stream, include_name=True):
             if include_name:
@@ -237,28 +237,28 @@ def create_compund_nbt_class(tag_id):
 
 _parsers = {}
 
-ByteTag = create_simple_nbt_class(1, "Byte", 1, ">b")
-ShortTag = create_simple_nbt_class(2, "Short", 2, ">h")
-IntTag = create_simple_nbt_class(3, "Int", 4, ">i")
-LongTag = create_simple_nbt_class(4, "Long", 8, ">q")
-FloatTag = create_simple_nbt_class(5, "Float", 4, ">f")
-DoubleTag = create_simple_nbt_class(6, "Double", 8, ">d")
+ByteTag = create_simple_nbt_class(1, 'Byte', 1, '>b')
+ShortTag = create_simple_nbt_class(2, 'Short', 2, '>h')
+IntTag = create_simple_nbt_class(3, 'Int', 4, '>i')
+LongTag = create_simple_nbt_class(4, 'Long', 8, '>q')
+FloatTag = create_simple_nbt_class(5, 'Float', 4, '>f')
+DoubleTag = create_simple_nbt_class(6, 'Double', 8, '>d')
 
-ByteArrayTag = create_array_nbt_class(7, "ByteArray", ByteTag)
+ByteArrayTag = create_array_nbt_class(7, 'ByteArray', ByteTag)
 
 StringTag = create_string_nbt_class(8)
 ListTag = create_list_nbt_class(9)
 CompoundTag = create_compund_nbt_class(10)
 
-IntArrayTag = create_array_nbt_class(11, "IntArray", IntTag)
-LongArrayTag = create_array_nbt_class(12, "LongArray", LongTag)
+IntArrayTag = create_array_nbt_class(11, 'IntArray', IntTag)
+LongArrayTag = create_array_nbt_class(12, 'LongArray', LongTag)
 
 def parse_nbt(stream):
     global _parsers
 
     tag_type = int.from_bytes(stream.read(1), byteorder='big', signed=False)
     tag_name_length = int.from_bytes(stream.read(2), byteorder='big', signed=False)
-    tag_name = stream.read(tag_name_length).decode("utf-8")
+    tag_name = stream.read(tag_name_length).decode('utf-8')
 
     return _parsers[tag_type].parse(stream, tag_name)
 

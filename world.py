@@ -6,7 +6,7 @@ class BlockState:
         self.props = props
 
     def __str__(self):
-        return "BlockState(" + self.name + "," + str(self.props) + ")"
+        return 'BlockState(' + self.name + ',' + str(self.props) + ')'
 
 class Block:
     def __init__(self, state):
@@ -14,7 +14,7 @@ class Block:
         self.dirty = True
 
     def __str__(self):
-        return "Block(" + str(self.state) + ")"
+        return 'Block(' + str(self.state) + ')'
 
     def set_state(self, state):
         self.dirty = True
@@ -47,15 +47,15 @@ class ChunkSection:
         return serial_section
 
     def _serialize_palette(self):
-        serial_palette = nbt.ListTag("Palette", nbt.CompoundTag.clazz_id)
+        serial_palette = nbt.ListTag('Palette', nbt.CompoundTag.clazz_id)
         for i in range(len(self.palette)):
             state = self.palette[i]
             state.id = i
-            palette_item = nbt.CompoundTag("None", children=[
-                nbt.StringTag("Name", state.name)
+            palette_item = nbt.CompoundTag('None', children=[
+                nbt.StringTag('Name', state.name)
             ])
             if len(state.props) != 0:
-                serial_props = nbt.CompoundTag("Properties")
+                serial_props = nbt.CompoundTag('Properties')
                 for name, val in state.props.items():
                     serial_props.add_child(nbt.StringTag(name, str(val)))
                 palette_item.add_child(serial_props)
@@ -64,7 +64,7 @@ class ChunkSection:
         return serial_palette
 
     def _serialize_blockstates(self):
-        serial_states = nbt.LongArrayTag("BlockStates")
+        serial_states = nbt.LongArrayTag('BlockStates')
         width = math.ceil(math.log(len(self.palette), 2))
         if width < 4:
             width = 4
@@ -75,8 +75,8 @@ class ChunkSection:
         mask = (2 ** 64) - 1
         for i in range(int((len(self.blocks) * width)/64)):
             lng = data & mask
-            lng = int.from_bytes(lng.to_bytes(8, byteorder="big", signed=False), byteorder="big", signed=True)
-            serial_states.add_child(nbt.LongTag("", lng))
+            lng = int.from_bytes(lng.to_bytes(8, byteorder='big', signed=False), byteorder='big', signed=True)
+            serial_states.add_child(nbt.LongTag('', lng))
             data = data >> 64
         return serial_states
 
@@ -112,30 +112,30 @@ class Chunk:
     # This selects the pack size, then splits out the ids
     def unpack(raw_nbt):
         sections = {}
-        for section in raw_nbt.get("Level").get("Sections").children:
-            flatstates = [c.get() for c in section.get("BlockStates").children]
+        for section in raw_nbt.get('Level').get('Sections').children:
+            flatstates = [c.get() for c in section.get('BlockStates').children]
             pack_size = int((len(flatstates) * 64) / (16**3))
             states = [
                 Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
             ]
             palette = [ 
                 BlockState(
-                    state.get("Name").get(),
-                    state.get("Properties").to_dict() if state.has("Properties") else {}
-                ) for state in section.get("Palette").children
+                    state.get('Name').get(),
+                    state.get('Properties').to_dict() if state.has('Properties') else {}
+                ) for state in section.get('Palette').children
             ]
             blocks = [
                 Block(palette[state]) for state in states
             ]
-            sections[section.get("Y").get()] = ChunkSection(blocks, palette, section)
+            sections[section.get('Y').get()] = ChunkSection(blocks, palette, section)
 
         return sections
 
     def pack(self):
-        new_sections = nbt.ListTag("Sections", nbt.CompoundTag.clazz_id, children=[
+        new_sections = nbt.ListTag('Sections', nbt.CompoundTag.clazz_id, children=[
             self.sections[sec].serialize() for sec in self.sections
         ])
-        self.raw_nbt.get("Level").add_child(new_sections)
+        self.raw_nbt.get('Level').add_child(new_sections)
 
         return self.raw_nbt
 
@@ -169,7 +169,7 @@ class Chunk:
         return comp
 
 class World:
-    def __init__(self, file_name, save_location=""):
+    def __init__(self, file_name, save_location=''):
         self.file_name = file_name
         self.save_location = save_location
         self.chunks = {}
@@ -182,7 +182,7 @@ class World:
 
     def close(self):
         for chunk_pos, chunk in self.chunks.items():
-            with open(self.save_location + "/" + self.file_name + "/region/" + self._get_region_file(chunk_pos), mode="r+b") as region:
+            with open(self.save_location + '/' + self.file_name + '/region/' + self._get_region_file(chunk_pos), mode='r+b') as region:
                 locations = [[
                             int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
                             int.from_bytes(region.read(1), byteorder='big', signed=False) * 4096
@@ -207,19 +207,19 @@ class World:
                 if data_len_diff != 0:
                     print(data_len_diff, block_data_len)
                     print(block_data_len - datalen)
-                    print("diff is not 0, I would stop now")
+                    print('diff is not 0, I would stop now')
                     # sys.exit(0)
 
                 # shift file as needed handle new data
                 region.seek(loc[0])
                 region.write(datalen.to_bytes(4, byteorder='big', signed=False))
-                region.write((2).to_bytes(1, byteorder="big", signed=False))
+                region.write((2).to_bytes(1, byteorder='big', signed=False))
                 region.write(data)
-                region.write((0).to_bytes(block_data_len - datalen, byteorder="big", signed=False))
+                region.write((0).to_bytes(block_data_len - datalen, byteorder='big', signed=False))
 
                 region.write(rest_of_file)
                 required_padding = (math.ceil(region.tell()/4096.0) * 4096) - region.tell()
-                region.write((0).to_bytes(required_padding, byteorder="big", signed=False))
+                region.write((0).to_bytes(required_padding, byteorder='big', signed=False))
 
                 # print(datalen, chunk_len, len(strm.get_data()))
                 # write in the location and length we will be using
@@ -232,8 +232,8 @@ class World:
                 # print(max([l[1] for l in locations]))
                 # print(locations)
                 for c_loc in locations:
-                    region.write(int(c_loc[0]/4096).to_bytes(3, byteorder="big", signed=False))
-                    region.write(int(c_loc[1]/4096).to_bytes(1, byteorder="big", signed=False))
+                    region.write(int(c_loc[0]/4096).to_bytes(3, byteorder='big', signed=False))
+                    region.write(int(c_loc[1]/4096).to_bytes(1, byteorder='big', signed=False))
 
                 # make sure the last chunk is padded to make the whole file a multiple of 4 KB
 
@@ -250,7 +250,7 @@ class World:
         return self.chunks[chunk_pos]
 
     def _load_chunk(self, chunk_pos):
-        with open(self.save_location + "/" + self.file_name + "/region/" + self._get_region_file(chunk_pos), mode="rb") as region:
+        with open(self.save_location + '/' + self.file_name + '/region/' + self._get_region_file(chunk_pos), mode='rb') as region:
             locations = [[
                         int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
                         int.from_bytes(region.read(1), byteorder='big', signed=False) * 4096
@@ -272,7 +272,7 @@ class World:
         # nstrm = stream.OutputStream()
         # data.serialize(nstrm)
         # print(len(nstrm.get_data()), len(zlib.compress(nstrm.get_data())))
-        chunk_pos = (data.get("Level").get("xPos").get(), data.get("Level").get("zPos").get())
+        chunk_pos = (data.get('Level').get('xPos').get(), data.get('Level').get('zPos').get())
         chunk = Chunk(
             chunk_pos[0],
             chunk_pos[1],
@@ -288,7 +288,7 @@ class World:
         return chunk
 
     def _get_region_file(self, chunk_pos):
-        return "r." + '.'.join([str(x) for x in self._get_region(chunk_pos)]) + '.mca'
+        return 'r.' + '.'.join([str(x) for x in self._get_region(chunk_pos)]) + '.mca'
 
 
     def _get_chunk(self, block_pos):
