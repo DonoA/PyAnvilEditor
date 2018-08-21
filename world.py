@@ -11,7 +11,7 @@ class BlockState:
 class Block:
     def __init__(self, state):
         self.state = state
-        self.dirty = False
+        self.dirty = True
 
     def __str__(self):
         return "Block(" + str(self.state) + ")"
@@ -38,10 +38,11 @@ class ChunkSection:
 
     def serialize(self):
         serial_section = self.raw_section
-        
-
-        serial_section.add_child(self._serialize_palette())
-        serial_section.add_child(self._serialize_blockstates())
+        dirty = any([b.dirty for b in self.blocks])
+        if dirty:
+            self.palette = list(set([b.get_state() for b in self.blocks]))
+            serial_section.add_child(self._serialize_palette())
+            serial_section.add_child(self._serialize_blockstates())
 
         return serial_section
 
@@ -203,17 +204,23 @@ class World:
                 datalen = len(data)
                 block_data_len = math.ceil(datalen/4096.0)*4096
                 data_len_diff = block_data_len - loc[1]
-                print(data_len_diff)
                 if data_len_diff != 0:
+                    print(data_len_diff, block_data_len)
+                    print(block_data_len - datalen)
                     print("diff is not 0, I would stop now")
-                    sys.exit(0)
+                    # sys.exit(0)
 
                 # shift file as needed handle new data
                 region.seek(loc[0])
                 region.write(datalen.to_bytes(4, byteorder='big', signed=False))
                 region.write((2).to_bytes(1, byteorder="big", signed=False))
                 region.write(data)
-                
+                region.write((0).to_bytes(block_data_len - datalen, byteorder="big", signed=False))
+
+                region.write(rest_of_file)
+                required_padding = (math.ceil(region.tell()/4096.0) * 4096) - region.tell()
+                region.write((0).to_bytes(required_padding, byteorder="big", signed=False))
+
                 # print(datalen, chunk_len, len(strm.get_data()))
                 # write in the location and length we will be using
                 for c_loc in locations:
@@ -259,7 +266,7 @@ class World:
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
         compr = region_file.read(1)
         decompressed = zlib.decompress(region_file.read(datalen))
-        print(datalen, len(decompressed), len(zlib.compress(decompressed)))
+        # print(datalen, len(decompressed), len(zlib.compress(decompressed)))
         data = nbt.parse_nbt(stream.InputStream(decompressed))
         # data.print()
         # nstrm = stream.OutputStream()
