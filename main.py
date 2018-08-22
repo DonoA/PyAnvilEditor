@@ -1,16 +1,10 @@
-import sys, world
+import sys, world, canvas
 
-with world.World('New World', save_location='/home/dallen/snap/minecraft/common/.minecraft/saves') as wrld:
+with world.World('SF4', save_location='/home/dallen/snap/minecraft/common/.minecraft/saves') as wrld:
     print('World loaded!')
-    # results = world.get_chunk((6, 6)).find_like('redstone_wall_torch')
-    # for r in results:
-    #     print(r[0], r[1])
-    #     print((r[0][0] % 16) + (r[0][2] % 16) * 16 + (r[0][1] % 16) * 16 ** 2)
-    ns = world.BlockState('minecraft:air', {})
-    chnk = wrld.get_chunk((6, 4))
-    for s in chnk.sections:
-        sec = chnk.sections[s]
-        for b in sec.blocks:
-            b.set_state(ns)
+    cv = canvas.Canvas(wrld)
+    for i in range(10, 20, 2):
+        cv.brush(world.BlockState('minecraft:gold_block', {})).square((25, i, 25), 10)
+        cv.brush(world.BlockState('minecraft:air', {})).disk((25, i, 25), 3)
 
 print('Saved!')

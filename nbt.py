@@ -34,7 +34,7 @@ def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
             self.tag_value = tag_value
 
         def print(self, indent=''):
-            print(indent + type(self).clazz_name + ': '' + self.tag_name + '' = ' + str(self.tag_value))
+            print(indent + type(self).clazz_name + ': ' + self.tag_name + ' = ' + str(self.tag_value))
 
         def get(self):
             return self.tag_value
@@ -47,7 +47,7 @@ def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
                 stream.write(type(self).clazz_id.to_bytes(1, byteorder='big', signed=False))
                 write_string(stream, self.tag_name)
 
-            stream.write(self.tag_value.to_bytes(type(self).clazz_width, byteorder='big', signed=True))
+            stream.write(struct.pack(type(self).clazz_parser, self.tag_value))
 
     register_parser(tag_id, DataNBTTag)
 
@@ -69,7 +69,7 @@ def create_string_nbt_class(tag_id):
             self.tag_value = tag_value
 
         def print(self, indent=''):
-            print(indent + 'String: '' + self.tag_name + '' = ' + str(self.tag_value))
+            print(indent + 'String: ' + self.tag_name + ' = ' + str(self.tag_value))
 
         def get(self):
             return self.tag_value
@@ -116,7 +116,7 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
             return self.tag_name
 
         def print(self, indent=''):
-            print(indent + type(self).clazz_name + ': '' + self.tag_name + '' size ' + str(len(self.children)))
+            print(indent + type(self).clazz_name + ': ' + self.tag_name + ' size ' + str(len(self.children)))
             for c in self.children:
                 c.print(indent + '  ')
 
@@ -162,7 +162,7 @@ def create_list_nbt_class(tag_id):
             return self.tag_name
 
         def print(self, indent=''):
-            print(indent + 'List: '' + self.tag_name + '' size ' + str(len(self.children)))
+            print(indent + 'List: ' + self.tag_name + ' size ' + str(len(self.children)))
             for c in self.children:
                 c.print(indent + '  ')
         
@@ -217,7 +217,7 @@ def create_compund_nbt_class(tag_id):
             return nd
 
         def print(self, indent=''):
-            print(indent + 'Compound: '' + self.tag_name + '' size ' + str(len(self.children)))
+            print(indent + 'Compound: ' + self.tag_name + ' size ' + str(len(self.children)))
             for c in self.children:
                 self.children[c].print(indent + '  ')
 

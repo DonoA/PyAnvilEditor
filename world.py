@@ -24,10 +24,10 @@ class Block:
         return self.state
 
 class ChunkSection:
-    def __init__(self, blocks, palette, raw_section):
+    def __init__(self, blocks, raw_section, y_index):
         self.blocks = blocks
-        self.palette = palette
         self.raw_section = raw_section
+        self.y_index = y_index
 
     def get_block(self, block_pos):
         x = block_pos[0]
@@ -41,8 +41,18 @@ class ChunkSection:
         dirty = any([b.dirty for b in self.blocks])
         if dirty:
             self.palette = list(set([b.get_state() for b in self.blocks]))
+            serial_section.add_child(nbt.ByteTag('Y', self.y_index))
             serial_section.add_child(self._serialize_palette())
             serial_section.add_child(self._serialize_blockstates())
+        
+        if not serial_section.has('SkyLight'):
+            serial_section.add_child(nbt.ByteArrayTag('SkyLight', [nbt.ByteTag('None', 0) for i in range(2048)]))
+
+        if not serial_section.has('BlockLight'):
+            serial_section.add_child(nbt.ByteArrayTag('BlockLight', [nbt.ByteTag('None', 0) for i in range(2048)]))
+
+        # serial_section.print()
+        # sys.exit(0)
 
         return serial_section
 
@@ -92,7 +102,14 @@ class Chunk:
         return self.get_section(block_pos[1]).get_block([n % 16 for n in block_pos])
 
     def get_section(self, y):
-        return self.sections[int(y/16)]
+        key = int(y/16)
+        if key not in self.sections:
+            self.sections[key] = ChunkSection(
+                [Block(BlockState('minecraft:air', {})) for i in range(4096)],
+                nbt.CompoundTag('None'),
+                key
+            )
+        return self.sections[key]
 
     def find_like(self, string):
         results = []
@@ -127,7 +144,7 @@ class Chunk:
             blocks = [
                 Block(palette[state]) for state in states
             ]
-            sections[section.get('Y').get()] = ChunkSection(blocks, palette, section)
+            sections[section.get('Y').get()] = ChunkSection(blocks, section, section.get('Y').get())
 
         return sections
 
@@ -205,9 +222,9 @@ class World:
                 block_data_len = math.ceil(datalen/4096.0)*4096
                 data_len_diff = block_data_len - loc[1]
                 if data_len_diff != 0:
-                    print(data_len_diff, block_data_len)
-                    print(block_data_len - datalen)
-                    print('diff is not 0, I would stop now')
+                    # print(data_len_diff, block_data_len)
+                    # print(block_data_len - datalen)
+                    print('Danger: Diff is not 0, shifting required!')
                     # sys.exit(0)
 
                 # shift file as needed handle new data
@@ -221,7 +238,6 @@ class World:
                 required_padding = (math.ceil(region.tell()/4096.0) * 4096) - region.tell()
                 region.write((0).to_bytes(required_padding, byteorder='big', signed=False))
 
-                # print(datalen, chunk_len, len(strm.get_data()))
                 # write in the location and length we will be using
                 for c_loc in locations:
                     if c_loc[0] > loc[0]:
@@ -229,8 +245,6 @@ class World:
                 
                 locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)][1] = block_data_len
                 region.seek(0)
-                # print(max([l[1] for l in locations]))
-                # print(locations)
                 for c_loc in locations:
                     region.write(int(c_loc[0]/4096).to_bytes(3, byteorder='big', signed=False))
                     region.write(int(c_loc[1]/4096).to_bytes(1, byteorder='big', signed=False))
