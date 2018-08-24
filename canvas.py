@@ -13,7 +13,9 @@ class Canvas:
         end = math.ceil(side_len/2.0)
         for x in range(-strt, end):
             for z in range(-strt, end):
-                self.world.get_block((center[0] + x, center[1], center[2] + z)).set_state(self.state)
+                blk = self.world.get_block((center[0] + x, center[1], center[2] + z))
+                # print(blk.get_state())
+                blk.set_state(self.state)
 
     def disk(self, center, radius):
         ss = radius+1
