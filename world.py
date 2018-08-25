@@ -49,10 +49,10 @@ class ChunkSection:
             serial_section.add_child(self._serialize_blockstates())
         
         if not serial_section.has('SkyLight'):
-            serial_section.add_child(nbt.ByteArrayTag('SkyLight', [nbt.ByteTag('None', 0) for i in range(2048)]))
+            serial_section.add_child(nbt.ByteArrayTag('SkyLight', [nbt.ByteTag('None', -1) for i in range(2048)]))
 
         if not serial_section.has('BlockLight'):
-            serial_section.add_child(nbt.ByteArrayTag('BlockLight', [nbt.ByteTag('None', 0) for i in range(2048)]))
+            serial_section.add_child(nbt.ByteArrayTag('BlockLight', [nbt.ByteTag('None', -1) for i in range(2048)]))
 
         return serial_section
 
@@ -212,8 +212,6 @@ class World:
         for region_name, chunks in chunks_by_region.items():
             with open(self.save_location + '/' + self.file_name + '/region/' + region_name, mode='r+b') as region:
                 region.seek(0)
-                chunks.sort(key=lambda chunk: ((chunk.xpos % 32) + (chunk.zpos % 32) * 32))
-                print("writing chunks", [str(c) for c in chunks])
                 locations = [[
                             int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
                             int.from_bytes(region.read(1), byteorder='big', signed=False) * 4096
@@ -223,19 +221,12 @@ class World:
 
                 data_in_file = bytearray(region.read())
 
+                chunks.sort(key=lambda chunk: locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][0])
+                print("writing chunks", [str(c) + ":" + str(locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][0]) for c in chunks])
+
                 for chunk in chunks:
                     strm = stream.OutputStream()
                     chunk.pack().serialize(strm)
-
-                    # data = nbt.parse_nbt(stream.InputStream(strm.get_data()))
-                    # chunk_pos = (data.get('Level').get('xPos').get(), data.get('Level').get('zPos').get())
-                    # chunk = Chunk(
-                    #     chunk_pos[0],
-                    #     chunk_pos[1],
-                    #     Chunk.unpack(data),
-                    #     data
-                    # )
-                    # print(len(chunk.find_like("gold_block")))
 
                     data = zlib.compress(strm.get_data())
                     datalen = len(data)
@@ -251,19 +242,21 @@ class World:
                     locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][1] = block_data_len
                     loc = locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)]
 
+                    print(loc)
+                    if loc[0] == 0 or loc[1] == 0:
+                        print("Chunk not generated", chunk)
+                        sys.exit(0)
+
                     data_len_diff = block_data_len - loc[1]
                     if data_len_diff != 0:
-                        # print(data_len_diff, block_data_len)
-                        # print(block_data_len - datalen)
                         print('Danger: Diff is not 0, shifting required!')
-
-                    # print(len(data))
 
                     for c_loc in locations:
                         if c_loc[0] > loc[0]:
                             c_loc[0] = c_loc[0] + data_len_diff
 
                     data_in_file[(loc[0] - 8192):(loc[0] + loc[1] - 8192)] = data
+                    print(loc[0], datalen, block_data_len)
 
                 region.seek(0)
 
@@ -277,45 +270,8 @@ class World:
                 region.write(data_in_file)
 
                 required_padding = (math.ceil(region.tell()/4096.0) * 4096) - region.tell()
-                # print(required_padding)
 
                 region.write((0).to_bytes(required_padding, byteorder='big', signed=False))
-
-                # Read the rest of the file
-                # region.seek(loc[0])
-                # chunk_len = int.from_bytes(region.read(4), byteorder='big', signed=False)
-                # region.seek(loc[0] + loc[1])
-                # rest_of_file = region.read()
-
-                # sys.exit(0)
-
-                # shift file as needed handle new data
-                # region.seek(loc[0])
-                # print("write seek:", region.tell())
-                # region.write(datalen.to_bytes(4, byteorder='big', signed=False))
-                # print("write len:", datalen)
-                # region.write((2).to_bytes(1, byteorder='big', signed=False))
-                # region.write(data)
-                # region.write((0).to_bytes(block_data_len - datalen, byteorder='big', signed=False))
-
-                # region.write(rest_of_file)
-                # required_padding = (math.ceil(region.tell()/4096.0) * 4096) - region.tell()
-
-                # make sure the last chunk is padded to make the whole file a multiple of 4 KB
-                # region.write((0).to_bytes(required_padding, byteorder='big', signed=False))
-
-                # write in the location and length we will be using
-                # for c_loc in locations:
-                    # if c_loc[0] > loc[0]:
-                        # c_loc[0] = c_loc[0] + data_len_diff
-                
-                # locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)][1] = block_data_len
-                # region.seek(0)
-                # for c_loc in locations:
-                    # region.write(int(c_loc[0]/4096).to_bytes(3, byteorder='big', signed=False))
-                    # region.write(int(c_loc[1]/4096).to_bytes(1, byteorder='big', signed=False))
-
-
 
     def get_block(self, block_pos):
         chunk_pos = self._get_chunk(block_pos)
@@ -344,6 +300,7 @@ class World:
         region_file.seek(offset)
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
         compr = region_file.read(1)
+        print(region_file.tell()-5, datalen)
         decompressed = zlib.decompress(region_file.read(datalen))
         data = nbt.parse_nbt(stream.InputStream(decompressed))
         chunk_pos = (data.get('Level').get('xPos').get(), data.get('Level').get('zPos').get())
@@ -353,17 +310,6 @@ class World:
             Chunk.unpack(data),
             data
         )
-
-        # print("Chunk at", chunk_pos)
-        # strm = stream.OutputStream()
-        # chunk.pack().serialize(strm)
-
-        # ndt = chunk.pack()
-        # ndt.print()
-        # nstrm = stream.OutputStream()
-        # ndt.serialize(nstrm)
-        # print(len(nstrm.get_data()), len(zlib.compress(nstrm.get_data())))
-        # sys.exit(0)
         return chunk
 
     def _get_region_file(self, chunk_pos):
