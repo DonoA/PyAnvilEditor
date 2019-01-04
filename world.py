@@ -1,27 +1,37 @@
-import sys, math, nbt, gzip, zlib, stream, time
+import sys, math, nbt, gzip, zlib, stream, time, os
 
 class BlockState:
     def __init__(self, name, props):
         self.name = name
         self.props = props
+        self.id = None
 
     def __str__(self):
         return 'BlockState(' + self.name + ',' + str(self.props) + ')'
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return self.name == other.name and self.props == other.props
+
+    def clone(self):
+        return BlockState(self.name, self.props.copy())
+
 class Block:
     def __init__(self, state):
-        self.state = state
-        self.dirty = False
+        self._state = state
+        self._dirty = True
 
     def __str__(self):
-        return 'Block(' + str(self.state) + ')'
+        return 'Block(' + str(self._state) + ')'
 
     def set_state(self, state):
-        self.dirty = True
-        self.state = state
+        self._dirty = True
+        self._state = state
 
     def get_state(self):
-        return self.state
+        return self._state.clone()
 
 class ChunkSection:
     def __init__(self, blocks, raw_section, y_index):
@@ -41,12 +51,20 @@ class ChunkSection:
         # for b in self.blocks:
         #     if b.dirty:
         #         print("DirtyBlock:", b.get_state())
-        dirty = any([b.dirty for b in self.blocks])
+        dirty = any([b._dirty for b in self.blocks])
         if dirty:
-            self.palette = list(set([b.get_state() for b in self.blocks]))
+            # serial_section.get('Palette').print()
+            # print("---")
+            self.palette = list(set([ b._state for b in self.blocks ] + [ BlockState('minecraft:air', {}) ]))
+            # print([str(p) for p in self.palette])
+            self.palette.sort(key=lambda s: s.name)
             serial_section.add_child(nbt.ByteTag('Y', self.y_index))
-            serial_section.add_child(self._serialize_palette())
-            serial_section.add_child(self._serialize_blockstates())
+            mat_id_mapping = {self.palette[i]: i for i in range(len(self.palette))}
+            new_palette = self._serialize_palette()
+            # new_palette.print()
+            # print("====")
+            serial_section.add_child(new_palette)
+            serial_section.add_child(self._serialize_blockstates(mat_id_mapping))
         
         if not serial_section.has('SkyLight'):
             serial_section.add_child(nbt.ByteArrayTag('SkyLight', [nbt.ByteTag('None', -1) for i in range(2048)]))
@@ -58,9 +76,7 @@ class ChunkSection:
 
     def _serialize_palette(self):
         serial_palette = nbt.ListTag('Palette', nbt.CompoundTag.clazz_id)
-        for i in range(len(self.palette)):
-            state = self.palette[i]
-            state.id = i
+        for state in self.palette:
             palette_item = nbt.CompoundTag('None', children=[
                 nbt.StringTag('Name', state.name)
             ])
@@ -73,14 +89,14 @@ class ChunkSection:
         
         return serial_palette
 
-    def _serialize_blockstates(self):
+    def _serialize_blockstates(self, state_mapping):
         serial_states = nbt.LongArrayTag('BlockStates')
         width = math.ceil(math.log(len(self.palette), 2))
         if width < 4:
             width = 4
         data = 0
         for block in reversed(self.blocks):
-            data = (data << width) + block.state.id
+            data = (data << width) + state_mapping[block._state]
 
         mask = (2 ** 64) - 1
         for i in range(int((len(self.blocks) * width)/64)):
@@ -92,11 +108,12 @@ class ChunkSection:
 
 class Chunk:
 
-    def __init__(self, xpos, zpos, sections, raw_nbt):
+    def __init__(self, xpos, zpos, sections, raw_nbt, orig_size):
         self.xpos = xpos
         self.zpos = zpos
         self.sections = sections
         self.raw_nbt = raw_nbt
+        self.orig_size = orig_size
         
     def get_block(self, block_pos):
         return self.get_section(block_pos[1]).get_block([n % 16 for n in block_pos])
@@ -118,7 +135,7 @@ class Chunk:
             for x1 in range(16):
                 for y1 in range(16):
                     for z1 in range(16):
-                        if string in section.get_block((x1, y1, z1)).state.name:
+                        if string in section.get_block((x1, y1, z1))._state.name:
                             results.append((
                                 (x1 + self.xpos * 16, y1 + sec * 16, z1 + self.zpos * 16), 
                                 section.get_block((x1, y1, z1))
@@ -152,9 +169,10 @@ class Chunk:
         new_sections = nbt.ListTag('Sections', nbt.CompoundTag.clazz_id, children=[
             self.sections[sec].serialize() for sec in self.sections
         ])
-        self.raw_nbt.get('Level').add_child(new_sections)
+        new_nbt = self.raw_nbt.clone()
+        new_nbt.get('Level').add_child(new_sections)
 
-        return self.raw_nbt
+        return new_nbt
 
     def _read_width_from_loc(long_list, width, possition):
         offset = possition * width
@@ -192,6 +210,10 @@ class World:
     def __init__(self, file_name, save_location=''):
         self.file_name = file_name
         self.save_location = save_location
+        if not os.path.exists(save_location):
+            raise FileNotFoundError('No such folder ' + save_location)
+        if not os.path.exists(save_location + '/' + file_name):
+            raise FileNotFoundError('No such save ' + save_location)
         self.chunks = {}
 
     def __enter__(self):
@@ -222,41 +244,43 @@ class World:
                 data_in_file = bytearray(region.read())
 
                 chunks.sort(key=lambda chunk: locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][0])
-                print("writing chunks", [str(c) + ":" + str(locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][0]) for c in chunks])
+                # print("writing chunks", [str(c) + ":" + str(locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][0]) for c in chunks])
 
                 for chunk in chunks:
                     strm = stream.OutputStream()
-                    chunk.pack().serialize(strm)
-
+                    chunkNBT = chunk.pack()
+                    chunkNBT.serialize(strm)
                     data = zlib.compress(strm.get_data())
                     datalen = len(data)
                     block_data_len = math.ceil((datalen + 5)/4096.0)*4096
-                    sector_count = block_data_len/4096
-                    data = datalen.to_bytes(4, byteorder='big', signed=False) + \
+                    data = (datalen + 1).to_bytes(4, byteorder='big', signed=False) + \
                         (2).to_bytes(1, byteorder='big', signed=False) + \
                         data + \
                         (0).to_bytes(block_data_len - (datalen + 5), byteorder='big', signed=False)
 
-                    timestamps[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)] = int(time.time())
+                    # timestamps[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)] = int(time.time())
+
+                    loc = locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)]
+                    data_len_diff = block_data_len - loc[1]
+                    if data_len_diff != 0:
+                        # chunkNBT.print()
+                        # print('===vs===')
+                        # chunk.raw_nbt.print()
+                        print('Danger: Diff is not 0, shifting required!')
+                        sys.exit(0)
 
                     locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][1] = block_data_len
-                    loc = locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)]
 
-                    print(loc)
                     if loc[0] == 0 or loc[1] == 0:
                         print("Chunk not generated", chunk)
                         sys.exit(0)
-
-                    data_len_diff = block_data_len - loc[1]
-                    if data_len_diff != 0:
-                        print('Danger: Diff is not 0, shifting required!')
 
                     for c_loc in locations:
                         if c_loc[0] > loc[0]:
                             c_loc[0] = c_loc[0] + data_len_diff
 
                     data_in_file[(loc[0] - 8192):(loc[0] + loc[1] - 8192)] = data
-                    print(loc[0], datalen, block_data_len)
+                    print('Saving', chunk, 'With', {'loc': loc, 'new_len': datalen, 'old_len': chunk.orig_size, 'sector_len': block_data_len})
 
                 region.seek(0)
 
@@ -293,22 +317,30 @@ class World:
 
             timestamps = region.read(4096)
 
-            chunk = self._load_binary_chunk_at(region, locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)][0])
+            loc = locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)]
+
+            print(loc)
+
+            print('Loading', chunk_pos,'from', region.name)
+            chunk = self._load_binary_chunk_at(region, loc[0], loc[1])
             self.chunks[chunk_pos] = chunk
 
-    def _load_binary_chunk_at(self, region_file, offset):
+    def _load_binary_chunk_at(self, region_file, offset, max_size):
         region_file.seek(offset)
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
+        print('Len', datalen, 'Max', max_size)
         compr = region_file.read(1)
+        print('Compr', compr)
         print(region_file.tell()-5, datalen)
-        decompressed = zlib.decompress(region_file.read(datalen))
+        decompressed = zlib.decompress(region_file.read(datalen-1))
         data = nbt.parse_nbt(stream.InputStream(decompressed))
         chunk_pos = (data.get('Level').get('xPos').get(), data.get('Level').get('zPos').get())
         chunk = Chunk(
             chunk_pos[0],
             chunk_pos[1],
             Chunk.unpack(data),
-            data
+            data,
+            datalen
         )
         return chunk
 

@@ -49,6 +49,9 @@ def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
 
             stream.write(struct.pack(type(self).clazz_parser, self.tag_value))
 
+        def clone(self):
+            return type(self)(self.tag_name, self.tag_value)
+
     register_parser(tag_id, DataNBTTag)
 
     return DataNBTTag
@@ -85,6 +88,9 @@ def create_string_nbt_class(tag_id):
             stream.write(len(self.tag_value).to_bytes(2, byteorder='big',signed=False))
             for c in self.tag_value:
                 stream.write(ord(c).to_bytes(1, byteorder='big', signed=False))
+
+        def clone(self):
+            return type(self)(self.tag_name, self.tag_value)
 
     register_parser(tag_id, DataNBTTag)
 
@@ -129,6 +135,9 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
 
             for tag in self.children:
                 tag.serialize(stream, include_name=False)
+
+        def clone(self):
+            return type(self)(self.tag_name, children=[c.clone() for c in self.children])
 
     register_parser(tag_id, ArrayNBTTag)
 
@@ -176,6 +185,9 @@ def create_list_nbt_class(tag_id):
 
             for tag in self.children:
                 tag.serialize(stream, include_name=False)
+
+        def clone(self):
+            return type(self)(self.tag_name, self.sub_type_id, children=[c.clone() for c in self.children])
 
     register_parser(tag_id, ListNBTTag)
 
@@ -230,6 +242,9 @@ def create_compund_nbt_class(tag_id):
                 self.children[tag_name].serialize(stream, include_name=True)
             
             stream.write((0).to_bytes(1, byteorder='big', signed=False))
+
+        def clone(self):
+            return type(self)(self.tag_name, children=[v.clone() for k, v in self.children.items()])
 
     register_parser(tag_id, CompundNBTTag)
 

@@ -1,11 +1,11 @@
+#!/bin/python3
 import sys, world, canvas
 
-with world.World('Copy of New World', save_location='/home/dallen/snap/minecraft/common/.minecraft/saves') as wrld:
+with world.World('A', save_location='/home/dallen/.minecraft/saves') as wrld:
     print('World loaded!')
+    # blk = wrld.get_block((8, 73, 150))
+    # print(blk)
     cv = canvas.Canvas(wrld)
-    cv.brush(world.BlockState('minecraft:gold_block', {})).square((30, 40, 30), 50)
-    # print("=====")
-    # cv.brush(world.BlockState('minecraft:air', {})).square((30, 3, 30), 10)
-    # cv.brush(world.BlockState('minecraft:gold_block', {})).square((35, 4, 35), 10)
+    cv.brush(world.BlockState('minecraft:gold_block', {})).square((106, 95, -252), 100)
 
 print('Saved!')
