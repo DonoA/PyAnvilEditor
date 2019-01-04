@@ -1,4 +1,5 @@
 import sys, math, nbt, gzip, zlib, stream, time, os
+from biomes import Biome
 
 class BlockState:
     def __init__(self, name, props):
@@ -19,12 +20,14 @@ class BlockState:
         return BlockState(self.name, self.props.copy())
 
 class Block:
-    def __init__(self, state):
+    def __init__(self, state, block_light, sky_light):
         self._state = state
+        self.block_light = 0
+        self.sky_light = 0
         self._dirty = True
 
     def __str__(self):
-        return 'Block(' + str(self._state) + ')'
+        return f'Block({str(self._state)}, {self.block_light}, {self.sky_light})'
 
     def set_state(self, state):
         self._dirty = True
@@ -48,21 +51,13 @@ class ChunkSection:
 
     def serialize(self):
         serial_section = self.raw_section
-        # for b in self.blocks:
-        #     if b.dirty:
-        #         print("DirtyBlock:", b.get_state())
         dirty = any([b._dirty for b in self.blocks])
         if dirty:
-            # serial_section.get('Palette').print()
-            # print("---")
             self.palette = list(set([ b._state for b in self.blocks ] + [ BlockState('minecraft:air', {}) ]))
-            # print([str(p) for p in self.palette])
             self.palette.sort(key=lambda s: s.name)
             serial_section.add_child(nbt.ByteTag('Y', self.y_index))
             mat_id_mapping = {self.palette[i]: i for i in range(len(self.palette))}
             new_palette = self._serialize_palette()
-            # new_palette.print()
-            # print("====")
             serial_section.add_child(new_palette)
             serial_section.add_child(self._serialize_blockstates(mat_id_mapping))
         
@@ -113,6 +108,7 @@ class Chunk:
         self.zpos = zpos
         self.sections = sections
         self.raw_nbt = raw_nbt
+        self.biomes = [Biome.biome_list[i] for i in self.raw_nbt.get('Level').get('Biomes').get()]
         self.orig_size = orig_size
         
     def get_block(self, block_pos):
@@ -122,7 +118,7 @@ class Chunk:
         key = int(y/16)
         if key not in self.sections:
             self.sections[key] = ChunkSection(
-                [Block(BlockState('minecraft:air', {})) for i in range(4096)],
+                [Block(BlockState('minecraft:air', {}), 0, 0) for i in range(4096)],
                 nbt.CompoundTag('None'),
                 key
             )
@@ -158,12 +154,24 @@ class Chunk:
                     state.get('Properties').to_dict() if state.has('Properties') else {}
                 ) for state in section.get('Palette').children
             ]
+            block_lights = Chunk._divide_nibbles(section.get('BlockLight').get())
+            sky_lights = Chunk._divide_nibbles(section.get('SkyLight').get())
             blocks = [
-                Block(palette[state]) for state in states
+                Block(palette[states[i]], block_lights[i], sky_lights[i]) for i in range(len(states))
             ]
             sections[section.get('Y').get()] = ChunkSection(blocks, section, section.get('Y').get())
 
         return sections
+
+    def _divide_nibbles(arry):
+        rtn = []
+        f2_mask = 2**4-1
+        f1_mask = f2_mask << 4
+        for s in arry:
+            rtn.append(s & f1_mask)
+            rtn.append(s & f2_mask)
+
+        return rtn
 
     def pack(self):
         new_sections = nbt.ListTag('Sections', nbt.CompoundTag.clazz_id, children=[
@@ -318,8 +326,7 @@ class World:
             timestamps = region.read(4096)
 
             loc = locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)]
-
-            print(loc)
+            # print(loc)
 
             print('Loading', chunk_pos,'from', region.name)
             chunk = self._load_binary_chunk_at(region, loc[0], loc[1])
@@ -328,10 +335,10 @@ class World:
     def _load_binary_chunk_at(self, region_file, offset, max_size):
         region_file.seek(offset)
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
-        print('Len', datalen, 'Max', max_size)
+        # print('Len', datalen, 'Max', max_size)
         compr = region_file.read(1)
-        print('Compr', compr)
-        print(region_file.tell()-5, datalen)
+        # print('Compr', compr)
+        # print(region_file.tell()-5, datalen)
         decompressed = zlib.decompress(region_file.read(datalen-1))
         data = nbt.parse_nbt(stream.InputStream(decompressed))
         chunk_pos = (data.get('Level').get('xPos').get(), data.get('Level').get('zPos').get())

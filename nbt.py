@@ -122,9 +122,11 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
             return self.tag_name
 
         def print(self, indent=''):
-            print(indent + type(self).clazz_name + ': ' + self.tag_name + ' size ' + str(len(self.children)))
-            for c in self.children:
-                c.print(indent + '  ')
+            str_dat = ', '.join([str(c.get()) for c in self.children])
+            print(f'{indent}{type(self).clazz_name}: {self.tag_name} size {str(len(self.children))} = [{str_dat}]')
+
+        def get(self):
+            return [int(c.get()) for c in self.children]
 
         def serialize(self, stream, include_name=True):
             if include_name:
