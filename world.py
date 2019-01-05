@@ -24,14 +24,17 @@ class Block:
         self._state = state
         self.block_light = 0
         self.sky_light = 0
-        self._dirty = True
+        self._dirty = False
 
     def __str__(self):
         return f'Block({str(self._state)}, {self.block_light}, {self.sky_light})'
 
     def set_state(self, state):
         self._dirty = True
-        self._state = state
+        if type(state) is BlockState:
+            self._state = state
+        else:
+            self._state = BlockState(state, {})
 
     def get_state(self):
         return self._state.clone()
@@ -269,13 +272,10 @@ class World:
                     # timestamps[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)] = int(time.time())
 
                     loc = locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)]
-                    data_len_diff = block_data_len - loc[1]
-                    if data_len_diff != 0:
-                        # chunkNBT.print()
-                        # print('===vs===')
-                        # chunk.raw_nbt.print()
-                        print('Danger: Diff is not 0, shifting required!')
-                        sys.exit(0)
+                    original_sector_length = loc[1]
+                    data_len_diff = block_data_len - original_sector_length
+                    # if data_len_diff != 0:
+                        # print(f'Danger: Diff is {data_len_diff}, shifting required!')
 
                     locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][1] = block_data_len
 
@@ -283,11 +283,13 @@ class World:
                         print("Chunk not generated", chunk)
                         sys.exit(0)
 
-                    for c_loc in locations:
-                        if c_loc[0] > loc[0]:
-                            c_loc[0] = c_loc[0] + data_len_diff
+                    # Adjust sectors after this one that need their locations recalculated
+                    for i, other_loc in enumerate(locations):
+                        if other_loc[0] > loc[0]:
+                            locations[i][0] = other_loc[0] + data_len_diff
 
-                    data_in_file[(loc[0] - 8192):(loc[0] + loc[1] - 8192)] = data
+                    header_length = 2*4096
+                    data_in_file[(loc[0] - header_length):(loc[0] + original_sector_length - header_length)] = data
                     print('Saving', chunk, 'With', {'loc': loc, 'new_len': datalen, 'old_len': chunk.orig_size, 'sector_len': block_data_len})
 
                 region.seek(0)
