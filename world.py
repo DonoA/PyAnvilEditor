@@ -1,5 +1,6 @@
 import sys, math, nbt, gzip, zlib, stream, time, os
 from biomes import Biome
+from canvas import Canvas
 
 class BlockState:
     def __init__(self, name, props):
@@ -218,7 +219,8 @@ class Chunk:
         return "Chunk(" + str(self.xpos) + "," + str(self.zpos) + ")"
 
 class World:
-    def __init__(self, file_name, save_location=''):
+    def __init__(self, file_name, save_location='', debug=False, read=True, write=True):
+        self.debug = debug
         self.file_name = file_name
         self.save_location = save_location
         if not os.path.exists(save_location):
@@ -233,6 +235,10 @@ class World:
     def __exit__(self, typ, val, trace):
         if typ is None:
             self.close()
+
+    def flush(self):
+        self.close()
+        self.chunks = {}
 
     def close(self):
         chunks_by_region = {}
@@ -264,18 +270,19 @@ class World:
                     data = zlib.compress(strm.get_data())
                     datalen = len(data)
                     block_data_len = math.ceil((datalen + 5)/4096.0)*4096
+                    # Constuct new data block
                     data = (datalen + 1).to_bytes(4, byteorder='big', signed=False) + \
                         (2).to_bytes(1, byteorder='big', signed=False) + \
                         data + \
                         (0).to_bytes(block_data_len - (datalen + 5), byteorder='big', signed=False)
 
-                    # timestamps[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)] = int(time.time())
+                    timestamps[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)] = int(time.time())
 
                     loc = locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)]
                     original_sector_length = loc[1]
                     data_len_diff = block_data_len - original_sector_length
-                    # if data_len_diff != 0:
-                        # print(f'Danger: Diff is {data_len_diff}, shifting required!')
+                    if data_len_diff != 0 and self.debug:
+                        print(f'Danger: Diff is {data_len_diff}, shifting required!')
 
                     locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][1] = block_data_len
 
@@ -290,7 +297,8 @@ class World:
 
                     header_length = 2*4096
                     data_in_file[(loc[0] - header_length):(loc[0] + original_sector_length - header_length)] = data
-                    print('Saving', chunk, 'With', {'loc': loc, 'new_len': datalen, 'old_len': chunk.orig_size, 'sector_len': block_data_len})
+                    if self.debug:
+                        print(f'Saving {chunk} with', {'loc': loc, 'new_len': datalen, 'old_len': chunk.orig_size, 'sector_len': block_data_len})
 
                 region.seek(0)
 
@@ -318,6 +326,9 @@ class World:
 
         return self.chunks[chunk_pos]
 
+    def get_canvas(self):
+        return Canvas(self)
+
     def _load_chunk(self, chunk_pos):
         with open(self.save_location + '/' + self.file_name + '/region/' + self._get_region_file(chunk_pos), mode='rb') as region:
             locations = [[
@@ -328,18 +339,15 @@ class World:
             timestamps = region.read(4096)
 
             loc = locations[((chunk_pos[0] % 32) + (chunk_pos[1] % 32) * 32)]
-            # print(loc)
-
-            print('Loading', chunk_pos,'from', region.name)
+            if self.debug:
+                print('Loading', chunk_pos,'from', region.name)
             chunk = self._load_binary_chunk_at(region, loc[0], loc[1])
             self.chunks[chunk_pos] = chunk
 
     def _load_binary_chunk_at(self, region_file, offset, max_size):
         region_file.seek(offset)
         datalen = int.from_bytes(region_file.read(4), byteorder='big', signed=False)
-        # print('Len', datalen, 'Max', max_size)
         compr = region_file.read(1)
-        # print('Compr', compr)
         # print(region_file.tell()-5, datalen)
         decompressed = zlib.decompress(region_file.read(datalen-1))
         data = nbt.parse_nbt(stream.InputStream(decompressed))
@@ -355,7 +363,6 @@ class World:
 
     def _get_region_file(self, chunk_pos):
         return 'r.' + '.'.join([str(x) for x in self._get_region(chunk_pos)]) + '.mca'
-
 
     def _get_chunk(self, block_pos):
         return (math.floor(block_pos[0] / 16), math.floor(block_pos[2] / 16))
