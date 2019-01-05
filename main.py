@@ -1,9 +1,6 @@
 #!/bin/python3
 import sys
-from world import World, BlockState
-from canvas import Canvas
-from materials import Material
-from biomes import Biome
+from pyanvil import World, BlockState, Material
 
 with World('A', save_location='/home/dallen/.minecraft/saves', debug=True) as wrld:
     print('World loaded!')

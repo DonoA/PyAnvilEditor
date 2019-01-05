@@ -1,5 +1,5 @@
 import sys, math
-from schematic import Schematic
+from pyanvil.schematic import Schematic
 
 class WorldTask:
     def __init__(self, location, new_state):

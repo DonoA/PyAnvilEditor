@@ -52,6 +52,12 @@ def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
         def clone(self):
             return type(self)(self.tag_name, self.tag_value)
 
+        def __repr__(self):
+            return f'{type(self).clazz_name}Tag(\'{self.tag_name}\', {str(self.tag_value)})'
+
+        def __eq__(self, other):
+            return self.tag_name == other.tag_name and self.tag_value == other.tag_value
+
     register_parser(tag_id, DataNBTTag)
 
     return DataNBTTag

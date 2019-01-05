@@ -1,6 +1,8 @@
-import sys, math, nbt, gzip, zlib, stream, time, os
-from biomes import Biome
-from canvas import Canvas
+import sys, math, gzip, zlib, time, os
+import pyanvil.nbt as nbt
+import pyanvil.stream as stream
+from pyanvil.biomes import Biome
+from pyanvil.canvas import Canvas
 
 class BlockState:
     def __init__(self, name, props):
