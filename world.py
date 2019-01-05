@@ -9,7 +9,7 @@ class BlockState:
         self.id = None
 
     def __str__(self):
-        return 'BlockState(' + self.name + ',' + str(self.props) + ')'
+        return f'BlockState({self.name}, {str(self.props)})'
 
     def __hash__(self):
         return hash(self.name)
@@ -21,11 +21,11 @@ class BlockState:
         return BlockState(self.name, self.props.copy())
 
 class Block:
-    def __init__(self, state, block_light, sky_light):
+    def __init__(self, state, block_light, sky_light, dirty=False):
         self._state = state
         self.block_light = 0
         self.sky_light = 0
-        self._dirty = False
+        self._dirty = dirty
 
     def __str__(self):
         return f'Block({str(self._state)}, {self.block_light}, {self.sky_light})'
@@ -122,7 +122,7 @@ class Chunk:
         key = int(y/16)
         if key not in self.sections:
             self.sections[key] = ChunkSection(
-                [Block(BlockState('minecraft:air', {}), 0, 0) for i in range(4096)],
+                [Block(BlockState('minecraft:air', {}), 0, 0, dirty=True) for i in range(4096)],
                 nbt.CompoundTag('None'),
                 key
             )
@@ -216,7 +216,7 @@ class Chunk:
         return comp
 
     def __str__(self):
-        return "Chunk(" + str(self.xpos) + "," + str(self.zpos) + ")"
+        return f'Chunk({str(self.xpos)},{str(self.zpos)})'
 
 class World:
     def __init__(self, file_name, save_location='', debug=False, read=True, write=True):
@@ -287,7 +287,7 @@ class World:
                     locations[((chunk.xpos % 32) + (chunk.zpos % 32) * 32)][1] = block_data_len
 
                     if loc[0] == 0 or loc[1] == 0:
-                        print("Chunk not generated", chunk)
+                        print('Chunk not generated', chunk)
                         sys.exit(0)
 
                     # Adjust sectors after this one that need their locations recalculated
@@ -300,6 +300,7 @@ class World:
                     if self.debug:
                         print(f'Saving {chunk} with', {'loc': loc, 'new_len': datalen, 'old_len': chunk.orig_size, 'sector_len': block_data_len})
 
+                # rewrite entire file with new chunks and locations recorded
                 region.seek(0)
 
                 for c_loc in locations:
