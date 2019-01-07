@@ -10,31 +10,31 @@ def register_parser(id, clazz):
 
     _parsers[id] = clazz
 
-def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
+def create_simple_nbt_class(tag_id, class_tag_name, tag_width, tag_parser):
 
     class DataNBTTag:
 
         clazz_width = tag_width
-        clazz_name = tag_name
+        clazz_name = class_tag_name
         clazz_parser = tag_parser
         clazz_id = tag_id
 
         @classmethod
         def parse(cls, stream, name):
             return cls(
-                name, 
-                struct.unpack(
+                tag_value=struct.unpack(
                     cls.clazz_parser, 
                     stream.read(cls.clazz_width)
-                )[0]
+                )[0],
+                tag_name=name
             )
 
-        def __init__(self, tag_name, tag_value):
+        def __init__(self, tag_value, tag_name='None'):
             self.tag_name = tag_name
             self.tag_value = tag_value
 
         def print(self, indent=''):
-            print(indent + type(self).clazz_name + ': ' + self.tag_name + ' = ' + str(self.tag_value))
+            print(indent + self.__repr__())
 
         def get(self):
             return self.tag_value
@@ -53,7 +53,7 @@ def create_simple_nbt_class(tag_id, tag_name, tag_width, tag_parser):
             return type(self)(self.tag_name, self.tag_value)
 
         def __repr__(self):
-            return f'{type(self).clazz_name}Tag(\'{self.tag_name}\', {str(self.tag_value)})'
+            return f'{type(self).clazz_name}Tag \'{self.tag_name}\' = {str(self.tag_value)}'
 
         def __eq__(self, other):
             return self.tag_name == other.tag_name and self.tag_value == other.tag_value
@@ -71,9 +71,9 @@ def create_string_nbt_class(tag_id):
         def parse(cls, stream, name):
             payload_length = int.from_bytes(stream.read(2), byteorder='big', signed=False)
             payload = stream.read(payload_length).decode('utf-8')
-            return cls(name, payload)
+            return cls(payload, tag_name=name)
 
-        def __init__(self, tag_name, tag_value):
+        def __init__(self, tag_value, tag_name='None'):
             self.tag_name = tag_name
             self.tag_value = tag_value
 
@@ -98,6 +98,12 @@ def create_string_nbt_class(tag_id):
         def clone(self):
             return type(self)(self.tag_name, self.tag_value)
 
+        def __repr__(self):
+            return f'StringTag: {self.tag_name} = \'{self.tag_value}\''
+
+        def __eq__(self, other):
+            return self.tag_name == other.tag_name and self.tag_value == other.tag_value
+
     register_parser(tag_id, DataNBTTag)
 
     return DataNBTTag
@@ -112,12 +118,12 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
         @classmethod
         def parse(cls, stream, name):
             payload_length = int.from_bytes(stream.read(4), byteorder='big', signed=True)
-            tag = cls(name)
+            tag = cls(tag_name=name)
             for i in range(payload_length):
                 tag.add_child(cls.clazz_sub_type.parse(stream, 'None'))
             return tag
 
-        def __init__(self, tag_name, children=[]):
+        def __init__(self, tag_name='None', children=[]):
             self.tag_name = tag_name
             self.children = children[:]
         
@@ -147,6 +153,15 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
         def clone(self):
             return type(self)(self.tag_name, children=[c.clone() for c in self.children])
 
+        def __repr__(self):
+            str_dat = ', '.join([str(c.get()) for c in self.children])
+            return f'{type(self).clazz_name}: {self.tag_name} size {str(len(self.children))} = [{str_dat}]'
+
+        def __eq__(self, other):
+            return self.tag_name == other.tag_name and \
+                len(self.children) == len(other.children) and \
+                not any([not self.children[i] == other.children[i] for i in range(len(self.children))])
+
     register_parser(tag_id, ArrayNBTTag)
 
     return ArrayNBTTag
@@ -162,12 +177,12 @@ def create_list_nbt_class(tag_id):
 
             sub_type = int.from_bytes(stream.read(1), byteorder='big', signed=False)
             payload_length = int.from_bytes(stream.read(4), byteorder='big', signed=True)
-            tag = cls(name, sub_type)
+            tag = cls(sub_type, tag_name=name)
             for i in range(payload_length):
                 tag.add_child(_parsers[sub_type].parse(stream, 'None'))
             return tag
 
-        def __init__(self, tag_name, sub_type_id, children=[]):
+        def __init__(self, sub_type_id, tag_name='None', children=[]):
             self.tag_name = tag_name
             self.sub_type_id = sub_type_id
             self.children = children[:]
@@ -197,6 +212,15 @@ def create_list_nbt_class(tag_id):
         def clone(self):
             return type(self)(self.tag_name, self.sub_type_id, children=[c.clone() for c in self.children])
 
+        def __repr__(self):
+            str_dat = ', '.join([c.__repr__() for c in self.children])
+            return f'ListTag: {self.tag_name} size {str(len(self.children))} = [{str_dat}]'
+
+        def __eq__(self, other):
+            return self.tag_name == other.tag_name and \
+                len(self.children) == len(other.children) and \
+                (len(self.children) == 0 or not any([not self.children[i] == other.children[i] for i in range(len(self.children))]))
+
     register_parser(tag_id, ListNBTTag)
 
     return ListNBTTag
@@ -208,13 +232,13 @@ def create_compund_nbt_class(tag_id):
 
         @classmethod
         def parse(cls, stream, name):
-            tag = cls(name)
+            tag = cls(tag_name=name)
             while stream.peek() != 0: # end tag
                 tag.add_child(parse_nbt(stream))
             stream.read(1) # get rid of the end tag
             return tag
 
-        def __init__(self, tag_name, children=[]):
+        def __init__(self, tag_name='None', children=[]):
             self.tag_name = tag_name
             self.children = { c.tag_name: c for c in children[:] }
         
@@ -253,6 +277,21 @@ def create_compund_nbt_class(tag_id):
 
         def clone(self):
             return type(self)(self.tag_name, children=[v.clone() for k, v in self.children.items()])
+
+        def __repr__(self):
+            str_dat = ', '.join([c.__repr__() for name, c in self.children.items()])
+            return f'CompundTag: {self.tag_name} size {str(len(self.children))} = {{{str_dat}}}]'
+
+        def __eq__(self, other):
+            passed = True
+            for name, v in self.children.items():
+                if name not in other.children:
+                    passed = False
+                elif other.children[name] != v:
+                    passed = False
+            return self.tag_name == other.tag_name and \
+                len(self.children) == len(other.children) and \
+                passed
 
     register_parser(tag_id, CompundNBTTag)
 

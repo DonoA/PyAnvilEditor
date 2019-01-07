@@ -61,37 +61,37 @@ class ChunkSection:
         if dirty:
             self.palette = list(set([ b._state for b in self.blocks ] + [ BlockState('minecraft:air', {}) ]))
             self.palette.sort(key=lambda s: s.name)
-            serial_section.add_child(nbt.ByteTag('Y', self.y_index))
+            serial_section.add_child(nbt.ByteTag(self.y_index, tag_name='Y'))
             mat_id_mapping = {self.palette[i]: i for i in range(len(self.palette))}
             new_palette = self._serialize_palette()
             serial_section.add_child(new_palette)
             serial_section.add_child(self._serialize_blockstates(mat_id_mapping))
         
         if not serial_section.has('SkyLight'):
-            serial_section.add_child(nbt.ByteArrayTag('SkyLight', [nbt.ByteTag('None', -1) for i in range(2048)]))
+            serial_section.add_child(nbt.ByteArrayTag(tag_name='SkyLight', children=[nbt.ByteTag('None', -1) for i in range(2048)]))
 
         if not serial_section.has('BlockLight'):
-            serial_section.add_child(nbt.ByteArrayTag('BlockLight', [nbt.ByteTag('None', -1) for i in range(2048)]))
+            serial_section.add_child(nbt.ByteArrayTag(tag_name='BlockLight', children=[nbt.ByteTag('None', -1) for i in range(2048)]))
 
         return serial_section
 
     def _serialize_palette(self):
-        serial_palette = nbt.ListTag('Palette', nbt.CompoundTag.clazz_id)
+        serial_palette = nbt.ListTag(nbt.CompoundTag.clazz_id, tag_name='Palette')
         for state in self.palette:
-            palette_item = nbt.CompoundTag('None', children=[
-                nbt.StringTag('Name', state.name)
+            palette_item = nbt.CompoundTag(tag_name='None', children=[
+                nbt.StringTag(state.name, tag_name='Name')
             ])
             if len(state.props) != 0:
-                serial_props = nbt.CompoundTag('Properties')
+                serial_props = nbt.CompoundTag(tag_name='Properties')
                 for name, val in state.props.items():
-                    serial_props.add_child(nbt.StringTag(name, str(val)))
+                    serial_props.add_child(nbt.StringTag(str(val), tag_name=name))
                 palette_item.add_child(serial_props)
             serial_palette.add_child(palette_item)
         
         return serial_palette
 
     def _serialize_blockstates(self, state_mapping):
-        serial_states = nbt.LongArrayTag('BlockStates')
+        serial_states = nbt.LongArrayTag(tag_name='BlockStates')
         width = math.ceil(math.log(len(self.palette), 2))
         if width < 4:
             width = 4
@@ -103,7 +103,7 @@ class ChunkSection:
         for i in range(int((len(self.blocks) * width)/64)):
             lng = data & mask
             lng = int.from_bytes(lng.to_bytes(8, byteorder='big', signed=False), byteorder='big', signed=True)
-            serial_states.add_child(nbt.LongTag('', lng))
+            serial_states.add_child(nbt.LongTag(lng))
             data = data >> 64
         return serial_states
 
@@ -125,7 +125,7 @@ class Chunk:
         if key not in self.sections:
             self.sections[key] = ChunkSection(
                 [Block(BlockState('minecraft:air', {}), 0, 0, dirty=True) for i in range(4096)],
-                nbt.CompoundTag('None'),
+                nbt.CompoundTag(),
                 key
             )
         return self.sections[key]
@@ -180,7 +180,7 @@ class Chunk:
         return rtn
 
     def pack(self):
-        new_sections = nbt.ListTag('Sections', nbt.CompoundTag.clazz_id, children=[
+        new_sections = nbt.ListTag(nbt.CompoundTag.clazz_id, tag_name='Sections', children=[
             self.sections[sec].serialize() for sec in self.sections
         ])
         new_nbt = self.raw_nbt.clone()
