@@ -50,7 +50,7 @@ def create_simple_nbt_class(tag_id, class_tag_name, tag_width, tag_parser):
             stream.write(struct.pack(type(self).clazz_parser, self.tag_value))
 
         def clone(self):
-            return type(self)(self.tag_name, self.tag_value)
+            return type(self)(self.tag_value, tag_name=self.tag_name)
 
         def __repr__(self):
             return f'{type(self).clazz_name}Tag \'{self.tag_name}\' = {str(self.tag_value)}'
@@ -96,7 +96,7 @@ def create_string_nbt_class(tag_id):
                 stream.write(ord(c).to_bytes(1, byteorder='big', signed=False))
 
         def clone(self):
-            return type(self)(self.tag_name, self.tag_value)
+            return type(self)(self.tag_value, tag_name=self.tag_name)
 
         def __repr__(self):
             return f'StringTag: {self.tag_name} = \'{self.tag_value}\''
@@ -151,7 +151,7 @@ def create_array_nbt_class(tag_id, tag_name, sub_type):
                 tag.serialize(stream, include_name=False)
 
         def clone(self):
-            return type(self)(self.tag_name, children=[c.clone() for c in self.children])
+            return type(self)(tag_name=self.tag_name, children=[c.clone() for c in self.children])
 
         def __repr__(self):
             str_dat = ', '.join([str(c.get()) for c in self.children])
@@ -210,7 +210,7 @@ def create_list_nbt_class(tag_id):
                 tag.serialize(stream, include_name=False)
 
         def clone(self):
-            return type(self)(self.tag_name, self.sub_type_id, children=[c.clone() for c in self.children])
+            return type(self)(self.sub_type_id, tag_name=self.tag_name, children=[c.clone() for c in self.children])
 
         def __repr__(self):
             str_dat = ', '.join([c.__repr__() for c in self.children])
@@ -276,7 +276,7 @@ def create_compund_nbt_class(tag_id):
             stream.write((0).to_bytes(1, byteorder='big', signed=False))
 
         def clone(self):
-            return type(self)(self.tag_name, children=[v.clone() for k, v in self.children.items()])
+            return type(self)(tag_name=self.tag_name, children=[v.clone() for k, v in self.children.items()])
 
         def __repr__(self):
             str_dat = ', '.join([c.__repr__() for name, c in self.children.items()])
