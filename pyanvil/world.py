@@ -68,10 +68,10 @@ class ChunkSection:
             serial_section.add_child(self._serialize_blockstates(mat_id_mapping))
         
         if not serial_section.has('SkyLight'):
-            serial_section.add_child(nbt.ByteArrayTag(tag_name='SkyLight', children=[nbt.ByteTag('None', -1) for i in range(2048)]))
+            serial_section.add_child(nbt.ByteArrayTag(tag_name='SkyLight', children=[nbt.ByteTag(-1, tag_name='None') for i in range(2048)]))
 
         if not serial_section.has('BlockLight'):
-            serial_section.add_child(nbt.ByteArrayTag(tag_name='BlockLight', children=[nbt.ByteTag('None', -1) for i in range(2048)]))
+            serial_section.add_child(nbt.ByteArrayTag(tag_name='BlockLight', children=[nbt.ByteTag(-1, tag_name='None') for i in range(2048)]))
 
         return serial_section
 

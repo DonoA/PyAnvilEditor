@@ -30,6 +30,7 @@ def create_simple_nbt_class(tag_id, class_tag_name, tag_width, tag_parser):
             )
 
         def __init__(self, tag_value, tag_name='None'):
+            int(tag_value)
             self.tag_name = tag_name
             self.tag_value = tag_value
 
@@ -190,6 +191,9 @@ def create_list_nbt_class(tag_id):
         def add_child(self, tag):
             self.children.append(tag)
 
+        def get(self):
+            return [c.get() for c in self.children]
+
         def name(self):
             return self.tag_name
 
@@ -247,6 +251,9 @@ def create_compund_nbt_class(tag_id):
 
         def get(self, name):
             return self.children[name]
+
+        # def get(self):
+        #     return { n: v.get() for n, v in self.children }
 
         def name(self):
             return self.tag_name

@@ -3,9 +3,8 @@ import sys
 from pyanvil import World, BlockState, Material
 
 with World('A', save_location='/home/dallen/.minecraft/saves', debug=True) as wrld:
-    print('World loaded!')
     cv = wrld.get_canvas()
-    cv.select_rectangle((50, 90, -260), (60, 92, -220)).fill(BlockState(Material.diamond_block, {}))
-    cv.select_rectangle((156, 96, -271), (177, 131, -249)).copy().paste(wrld, (100, 110, -250))
+    cv.select_rectangle((334, 67, -240), (347, 100, -222)).copy().paste(wrld, (411, 105, -302))
+    cv.select_rectangle((334, 67, -240), (347, 100, -222)).fill(BlockState(Material.diamond_block, {}))
 
 print('Saved!')
