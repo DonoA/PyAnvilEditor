@@ -1,4 +1,5 @@
 import sys, math, gzip, zlib, time, os
+from pathlib import Path
 import pyanvil.nbt as nbt
 import pyanvil.stream as stream
 from pyanvil.biomes import Biome
@@ -108,13 +109,12 @@ class ChunkSection:
         return serial_states
 
 class Chunk:
-
     def __init__(self, xpos, zpos, sections, raw_nbt, orig_size):
         self.xpos = xpos
         self.zpos = zpos
         self.sections = sections
         self.raw_nbt = raw_nbt
-        self.biomes = [Biome.biome_list[i] for i in self.raw_nbt.get('Level').get('Biomes').get()]
+        self.biomes = [Biome.from_index(i) for i in self.raw_nbt.get('Level').get('Biomes').get()]
         self.orig_size = orig_size
         
     def get_block(self, block_pos):
@@ -149,24 +149,34 @@ class Chunk:
     def unpack(raw_nbt):
         sections = {}
         for section in raw_nbt.get('Level').get('Sections').children:
-            flatstates = [c.get() for c in section.get('BlockStates').children]
-            pack_size = int((len(flatstates) * 64) / (16**3))
-            states = [
-                Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
-            ]
-            palette = [ 
-                BlockState(
-                    state.get('Name').get(),
-                    state.get('Properties').to_dict() if state.has('Properties') else {}
-                ) for state in section.get('Palette').children
-            ]
-            block_lights = Chunk._divide_nibbles(section.get('BlockLight').get())
-            sky_lights = Chunk._divide_nibbles(section.get('SkyLight').get())
-            blocks = [
-                Block(palette[states[i]], block_lights[i], sky_lights[i]) for i in range(len(states))
-            ]
+            if section.has('BlockStates'):
+                flatstates = [c.get() for c in section.get('BlockStates').children]
+                pack_size = int((len(flatstates) * 64) / (16**3))
+                states = [
+                    Chunk._read_width_from_loc(flatstates, pack_size, i) for i in range(16**3)
+                ]
+            else:
+                # Sections which contain only air have no states.
+                states = []
+            if section.has('Palette'):
+                palette = [ 
+                    BlockState(
+                        state.get('Name').get(),
+                        state.get('Properties').to_dict() if state.has('Properties') else {}
+                    ) for state in section.get('Palette').children
+                ]
+            else:
+                # Nor any palette entries.
+                palette = None
+            block_lights = Chunk._divide_nibbles(section.get('BlockLight').get()) if section.has('BlockLight') else None
+            sky_lights = Chunk._divide_nibbles(section.get('SkyLight').get()) if section.has('SkyLight') else None
+            blocks = []
+            for i in range(len(states)):
+                state = palette[states[i]]
+                block_light = block_lights[i] if block_lights else 0
+                sky_light = sky_lights[i] if sky_lights else 0
+                blocks.append(Block(state, block_light, sky_light))
             sections[section.get('Y').get()] = ChunkSection(blocks, section, section.get('Y').get())
-
         return sections
 
     def _divide_nibbles(arry):
@@ -221,14 +231,14 @@ class Chunk:
         return f'Chunk({str(self.xpos)},{str(self.zpos)})'
 
 class World:
-    def __init__(self, file_name, save_location='', debug=False, read=True, write=True):
+    def __init__(self, world_folder, save_location=None, debug=False, read=True, write=True):
         self.debug = debug
-        self.file_name = file_name
-        self.save_location = save_location
-        if not os.path.exists(save_location):
-            raise FileNotFoundError('No such folder ' + save_location)
-        if not os.path.exists(save_location + '/' + file_name):
-            raise FileNotFoundError('No such save ' + save_location)
+        if save_location is not None:
+            self.world_folder = Path(save_location) / world_folder
+        else:
+            self.world_folder = Path(world_folder)
+        if not self.world_folder.is_dir():
+            raise FileNotFoundError(f'No such folder \"{self.world_folder}\"')
         self.chunks = {}
 
     def __enter__(self):
@@ -251,7 +261,7 @@ class World:
             chunks_by_region[region].append(chunk)
 
         for region_name, chunks in chunks_by_region.items():
-            with open(self.save_location + '/' + self.file_name + '/region/' + region_name, mode='r+b') as region:
+            with open(self.world_folder / 'region' / region_name, mode='r+b') as region:
                 region.seek(0)
                 locations = [[
                             int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
@@ -333,7 +343,7 @@ class World:
         return Canvas(self)
 
     def _load_chunk(self, chunk_pos):
-        with open(self.save_location + '/' + self.file_name + '/region/' + self._get_region_file(chunk_pos), mode='rb') as region:
+        with open(self.world_folder / 'region' / self._get_region_file(chunk_pos), mode='rb') as region:
             locations = [[
                         int.from_bytes(region.read(3), byteorder='big', signed=False) * 4096, 
                         int.from_bytes(region.read(1), byteorder='big', signed=False) * 4096
